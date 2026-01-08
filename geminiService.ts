@@ -18,8 +18,13 @@ Lyrics:  [Somali Lyrics]
 ==========================================================================`;
 
 export const processMediaFile = async (fileData: FileData): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY ?? process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing VITE_GEMINI_API_KEY. Please configure your Gemini API key.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -42,7 +47,11 @@ export const processMediaFile = async (fileData: FileData): Promise<string> => {
       },
     });
 
-    return response.text || "Failed to generate transcription.";
+    if (!response.text) {
+      throw new Error("Empty response from the AI service.");
+    }
+
+    return response.text;
   } catch (error) {
     console.error("Gemini processing error:", error);
     throw new Error("The AI failed to process the media. Please ensure the file is valid and under 25MB.");

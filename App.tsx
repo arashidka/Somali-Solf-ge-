@@ -21,9 +21,42 @@ const App: React.FC = () => {
   
   const audioRef = useRef<HTMLAudioElement>(null);
   const playbackMonitorRef = useRef<number | null>(null);
+  const playbackTickRef = useRef<number | null>(null);
 
   const updateStep = (id: string, status: ProcessingStep['status']) => {
     setSteps(prev => prev.map(step => step.id === id ? { ...step, status } : step));
+  };
+
+  const resetSteps = () => {
+    setSteps(prev => prev.map(step => ({ ...step, status: 'pending' })));
+  };
+
+  const emitPlaybackTick = () => {
+    if (audioRef.current) {
+      window.dispatchEvent(new CustomEvent('somali-playback-tick', {
+        detail: { time: audioRef.current.currentTime },
+      }));
+    }
+  };
+
+  const startPlaybackTicks = () => {
+    if (playbackTickRef.current) cancelAnimationFrame(playbackTickRef.current);
+
+    const tick = () => {
+      if (!audioRef.current || audioRef.current.paused) {
+        playbackTickRef.current = null;
+        return;
+      }
+      emitPlaybackTick();
+      playbackTickRef.current = requestAnimationFrame(tick);
+    };
+
+    playbackTickRef.current = requestAnimationFrame(tick);
+  };
+
+  const stopPlaybackTicks = () => {
+    if (playbackTickRef.current) cancelAnimationFrame(playbackTickRef.current);
+    playbackTickRef.current = null;
   };
 
   const handleFileUpload = async (uploadedFile: FileData) => {
@@ -35,7 +68,7 @@ const App: React.FC = () => {
     setIsProcessing(true);
     setResult(null);
     setError(null);
-    setSteps(steps.map(s => ({ ...s, status: 'pending' })));
+    resetSteps();
 
     try {
       updateStep('upload', 'processing');
@@ -61,22 +94,18 @@ const App: React.FC = () => {
     fileHistory.forEach(url => URL.revokeObjectURL(url));
     setFileHistory([]);
     if (playbackMonitorRef.current) cancelAnimationFrame(playbackMonitorRef.current);
+    stopPlaybackTicks();
     setFile(null);
     setResult(null);
     setError(null);
     setIsProcessing(false);
-    setSteps(steps.map(s => ({ ...s, status: 'pending' })));
+    resetSteps();
     // Reset global playback event
     window.dispatchEvent(new CustomEvent('somali-playback-tick', { detail: { time: 0 } }));
   };
 
   const onTimeUpdate = () => {
-    if (audioRef.current) {
-      // Dispatch high-frequency event for optimized measure rendering
-      window.dispatchEvent(new CustomEvent('somali-playback-tick', { 
-        detail: { time: audioRef.current.currentTime } 
-      }));
-    }
+    emitPlaybackTick();
   };
 
   const seekAndPlay = (startTime: number, endTime: number) => {
@@ -98,10 +127,12 @@ const App: React.FC = () => {
           audioRef.current.pause();
           audioRef.current.currentTime = safeEnd;
           playbackMonitorRef.current = null;
+          stopPlaybackTicks();
           // One last tick for accuracy
           window.dispatchEvent(new CustomEvent('somali-playback-tick', { detail: { time: safeEnd } }));
         } else if (audioRef.current.paused) {
           playbackMonitorRef.current = null;
+          stopPlaybackTicks();
         } else {
           playbackMonitorRef.current = requestAnimationFrame(monitor);
         }
@@ -114,6 +145,7 @@ const App: React.FC = () => {
   useEffect(() => {
     return () => {
       if (playbackMonitorRef.current) cancelAnimationFrame(playbackMonitorRef.current);
+      stopPlaybackTicks();
       fileHistory.forEach(url => URL.revokeObjectURL(url));
     };
   }, [fileHistory]);
@@ -155,6 +187,9 @@ const App: React.FC = () => {
                     className="flex-grow h-10"
                     controls
                     onTimeUpdate={onTimeUpdate}
+                    onPlay={startPlaybackTicks}
+                    onPause={stopPlaybackTicks}
+                    onEnded={stopPlaybackTicks}
                   />
                 </div>
                 {!isProcessing && result && (
