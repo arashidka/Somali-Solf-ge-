@@ -1,0 +1,8 @@
+{
+  "name": "Somali Solfège Sheet Generator",
+  "description": "An AI-powered Somali musicology engine that transcribes audio and video into solfège notation and Somali lyrics.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
