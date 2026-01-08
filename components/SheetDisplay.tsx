@@ -12,6 +12,12 @@ const timeToSeconds = (timeStr: string): number => {
   // Cleanup common non-numeric chars but keep colon and dot
   const clean = timeStr.replace(/[^\d:.]/g, '');
   const parts = clean.split(':');
+  if (parts.length === 3) {
+    const hours = parseInt(parts[0], 10);
+    const mins = parseInt(parts[1], 10);
+    const secs = parseFloat(parts[2]);
+    return hours * 3600 + mins * 60 + secs;
+  }
   if (parts.length === 2) {
     const mins = parseInt(parts[0], 10);
     const secs = parseFloat(parts[1]);
@@ -37,7 +43,7 @@ const MeasureBlock: React.FC<{
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [isActive, setIsActive] = useState(false);
   const lines = measureText.trim().split('\n');
-  const mDuration = mEnd - mStart;
+  const mDuration = Math.max(0.01, mEnd - mStart);
   const RUBATO_BUFFER = 0.95; // 5% safety factor to prevent visual outrun
 
   const header = lines[0];
@@ -203,17 +209,17 @@ export const SheetDisplay: React.FC<SheetDisplayProps> = ({ result, onSeek }) =>
   const [visibleCount, setVisibleCount] = useState(12); // Initial visible measures for lazy load
 
   const parsedData = useMemo(() => {
-    const sections = result.split('--------------------------------------------------------------------------');
+    const sections = result.split(/-{10,}/);
     const header = sections[0]?.replace(/=+/g, '').trim() || '';
-    const body = sections[1] || '';
+    const body = sections.slice(1).join('\n') || '';
     const rawMeasures = body.split(/(?=Measure \[\d+\])/g).filter(m => m.trim().startsWith('Measure'));
     
     // Resilient "Healing" Parser
     let parsed = rawMeasures.map(m => {
       // Regex supporting multiple bracket/paren formats
-      const timeMatch = m.match(/(?:\[|\()?\s*(\d{1,2}:\d{1,2}(?:\.\d+)?)\s*-\s*(\d{1,2}:\d{1,2}(?:\.\d+)?)\s*(?:\]|\))?/);
-      const start = timeMatch ? timeToSeconds(timeMatch[1]) : 0;
-      const end = timeMatch ? timeToSeconds(timeMatch[2]) : start + 2;
+      const timeMatch = m.match(/(\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?)/g);
+      const start = timeMatch?.[0] ? timeToSeconds(timeMatch[0]) : 0;
+      const end = timeMatch?.[1] ? timeToSeconds(timeMatch[1]) : start + 2;
       return { text: m, start, end };
     });
 
@@ -232,11 +238,13 @@ export const SheetDisplay: React.FC<SheetDisplayProps> = ({ result, onSeek }) =>
   const downloadTxt = () => {
     const element = document.createElement("a");
     const file = new Blob([result], { type: 'text/plain' });
-    element.href = URL.createObjectURL(file);
+    const url = URL.createObjectURL(file);
+    element.href = url;
     element.download = "Somali-Solfege-Sheet.txt";
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+    URL.revokeObjectURL(url);
   };
 
   // Simple Intersection Observer implementation for lazy rendering
